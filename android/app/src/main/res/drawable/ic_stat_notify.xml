@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通知小图标：白色剪影时钟（状态栏标准样式，非全彩 mipmap） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,2A10,10 0,1,0 22,12A10,10 0,0,0 12,2M12,20A8,8 0,1,1 20,12A8,8 0,0,1 12,20M12,6A1,1 0,0,0 11,7V12A1,1 0,0,0 11.59,12.91L14.59,14.91A1,1 0,0,0 15.68,13.5L13,11.7V7A1,1 0,0,0 12,6Z"/>
+</vector>
