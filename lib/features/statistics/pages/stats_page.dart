@@ -206,49 +206,54 @@ class _StatsPageState extends State<StatsPage> with WidgetsBindingObserver {
     final picked = await showModalBottomSheet<int>(
       context: context,
       backgroundColor: context.colors.surface,
+      // 弹层宽度跟随屏幕（默认 M3 约束会让宽度随内容收缩）
+      constraints: const BoxConstraints(maxWidth: double.infinity),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '每周循环起始日',
-                style: TextStyle(
-                  fontFamily: 'Figtree',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: sheetContext.colors.onSurface,
+      builder: (sheetContext) => SizedBox(
+        width: double.infinity,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '每周循环起始日',
+                  style: TextStyle(
+                    fontFamily: 'Figtree',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: sheetContext.colors.onSurface,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '「本周」将从所选星期起循环统计',
-                style: TextStyle(
-                  fontFamily: 'Figtree',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: sheetContext.tokens.muted,
+                const SizedBox(height: 4),
+                Text(
+                  '「本周」将从所选星期起循环统计',
+                  style: TextStyle(
+                    fontFamily: 'Figtree',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: sheetContext.tokens.muted,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  for (var i = 0; i < 7; i++)
-                    _AnchorChip(
-                      label: '周${names[i]}',
-                      selected: settings.statsWeekStart == i + 1,
-                      onTap: () => Navigator.pop(sheetContext, i + 1),
-                    ),
-                ],
-              ),
-            ],
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (var i = 0; i < 7; i++)
+                      _AnchorChip(
+                        label: '周${names[i]}',
+                        selected: settings.statsWeekStart == i + 1,
+                        onTap: () => Navigator.pop(sheetContext, i + 1),
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -264,54 +269,58 @@ class _StatsPageState extends State<StatsPage> with WidgetsBindingObserver {
     final picked = await showModalBottomSheet<int>(
       context: context,
       backgroundColor: context.colors.surface,
+      constraints: const BoxConstraints(maxWidth: double.infinity),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '每月循环起始日',
-                style: TextStyle(
-                  fontFamily: 'Figtree',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: sheetContext.colors.onSurface,
+      builder: (sheetContext) => SizedBox(
+        width: double.infinity,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '每月循环起始日',
+                  style: TextStyle(
+                    fontFamily: 'Figtree',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: sheetContext.colors.onSurface,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '如发薪日为 15 号，「本月」= 15 日 ~ 下月 14 日',
-                style: TextStyle(
-                  fontFamily: 'Figtree',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: sheetContext.tokens.muted,
+                const SizedBox(height: 4),
+                Text(
+                  '如发薪日为 15 号，「本月」= 15 日 ~ 下月 14 日',
+                  style: TextStyle(
+                    fontFamily: 'Figtree',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: sheetContext.tokens.muted,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  for (final d in const [1, 5, 10, 15, 20, 25])
-                    _AnchorChip(
-                      label: '$d 号',
-                      selected: settings.statsMonthAnchorDay == d,
-                      onTap: () => Navigator.pop(sheetContext, d),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              TextButton(
-                onPressed: () => Navigator.pop(sheetContext, -1),
-                child: const Text('自定义日期…'),
-              ),
-            ],
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final d in const [1, 5, 10, 15, 20, 25])
+                      _AnchorChip(
+                        label: '$d 号',
+                        selected: settings.statsMonthAnchorDay == d,
+                        onTap: () => Navigator.pop(sheetContext, d),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: () => Navigator.pop(sheetContext, -1),
+                  child: const Text('自定义日期…'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -354,46 +363,77 @@ class _StatsPageState extends State<StatsPage> with WidgetsBindingObserver {
     BuildContext context,
     SettingsController settings,
   ) async {
+    final now = DateTime.now();
     final action = await showModalBottomSheet<int>(
       context: context,
       backgroundColor: context.colors.surface,
+      constraints: const BoxConstraints(maxWidth: double.infinity),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '累计统计范围',
-                style: TextStyle(
-                  fontFamily: 'Figtree',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: sheetContext.colors.onSurface,
+      builder: (sheetContext) => SizedBox(
+        width: double.infinity,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '累计统计范围',
+                  style: TextStyle(
+                    fontFamily: 'Figtree',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: sheetContext.colors.onSurface,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  _AnchorChip(
-                    label: '全部数据',
-                    selected: settings.statsTotalStart == null,
-                    onTap: () => Navigator.pop(sheetContext, 0),
+                const SizedBox(height: 4),
+                Text(
+                  '「累计收入」从所选日期起累计，不影响本周/本月/今年',
+                  style: TextStyle(
+                    fontFamily: 'Figtree',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: sheetContext.tokens.muted,
                   ),
-                  _AnchorChip(
-                    label: '自定义起始日…',
-                    selected: settings.statsTotalStart != null,
-                    onTap: () => Navigator.pop(sheetContext, 1),
-                  ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _AnchorChip(
+                      label: '全部数据',
+                      selected: settings.statsTotalStart == null,
+                      onTap: () => Navigator.pop(sheetContext, 0),
+                    ),
+                    _AnchorChip(
+                      label: '本月起',
+                      selected: _isSameDay(
+                        settings.statsTotalStart,
+                        DateTime(now.year, now.month),
+                      ),
+                      onTap: () => Navigator.pop(sheetContext, 2),
+                    ),
+                    _AnchorChip(
+                      label: '今年起',
+                      selected: _isSameDay(
+                        settings.statsTotalStart,
+                        DateTime(now.year),
+                      ),
+                      onTap: () => Navigator.pop(sheetContext, 3),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: () => Navigator.pop(sheetContext, 1),
+                  child: const Text('自定义起始日…'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -401,6 +441,14 @@ class _StatsPageState extends State<StatsPage> with WidgetsBindingObserver {
     if (action == null) return;
     if (action == 0) {
       await settings.setStatsTotalStart(null);
+      return;
+    }
+    if (action == 2) {
+      await settings.setStatsTotalStart(DateTime(now.year, now.month));
+      return;
+    }
+    if (action == 3) {
+      await settings.setStatsTotalStart(DateTime(now.year));
       return;
     }
     if (!mounted) return;
@@ -811,12 +859,20 @@ class _TotalCard extends StatelessWidget {
                     ),
                   ),
                 InkWell(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                   onTap: onConfigure,
-                  child: Icon(
-                    LucideIcons.calendarRange,
-                    size: 16,
-                    color: scheme.primary,
+                  child: Container(
+                    // 扩大点击热区，避免小图标难以点中
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      LucideIcons.calendarRange,
+                      size: 17,
+                      color: scheme.primary,
+                    ),
                   ),
                 ),
               ],
@@ -976,6 +1032,10 @@ class _AnchorChip extends StatelessWidget {
     );
   }
 }
+
+/// 两个日期是否为同一天（[a] 为 null 时返回 false）。
+bool _isSameDay(DateTime? a, DateTime b) =>
+    a != null && a.year == b.year && a.month == b.month && a.day == b.day;
 
 /// 星期名称（1=周一 … 7=周日）。
 String _weekdayName(int weekday) => switch (weekday) {
