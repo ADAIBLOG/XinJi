@@ -88,7 +88,8 @@ void main() {
     final s2 = SettingsController();
     await Future.delayed(Duration.zero);
     expect(s2.jobs.first.punchReminders, true);
-    expect(s2.jobs.first.reminderMinutes, [1080, 540, 780]);
+    // 加载时排序去重，保证多来源数据（导入/旧版本）顺序稳定
+    expect(s2.jobs.first.reminderMinutes, [540, 780, 1080]);
 
     // 旧数据迁移：JSON 无 reminderMinutes 但开关开启 → 沿用上下班时间
     final legacy = Job.fromJson({

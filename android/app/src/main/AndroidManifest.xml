@@ -1,7 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 打卡提醒通知：通知权限 + 精确闹钟（可选，不可用时回退非精确）+ 开机后恢复已排定的每日提醒 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- Android 12：用户可在「闹钟和提醒」中授权/撤销 -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <!-- Android 13+：提醒类应用可在安装时获得精确闹钟能力，避免因未授权而退回
+         inexact 闹钟（在 Doze/省电策略下可能被推迟到设备唤醒，表现为「打开应用才提醒」）。
+         本项目通过 GitHub Releases 侧载分发，不涉及 Play 商店的 USE_EXACT_ALARM 审核。 -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <!-- 申请加入电池优化白名单：部分系统会冻结后台闹钟，导致提醒要等应用打开才出现。
+         仅用于弹出系统授权弹窗，用户可拒绝。 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <!-- Android 13+ 通知运行时权限（插件清单同样声明，这里显式保留便于审阅） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="薪迹"
         android:name="${applicationName}"
@@ -37,6 +47,15 @@
         <meta-data
             android:name="com.adai.xinji.notification_icon"
             android:resource="@drawable/ic_stat_notify" />
+        <!-- 系统闹钟到点后实际发出通知。缺少此接收器时，应用在后台/被杀后
+             闹钟虽会触发但没有任何组件负责显示通知（只有应用运行时的补发能弹出）。 -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <!-- 通知上的「去打卡」操作按钮 -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
         <!-- 开机/应用更新后恢复已排定的每日打卡提醒 -->
         <receiver
             android:exported="false"

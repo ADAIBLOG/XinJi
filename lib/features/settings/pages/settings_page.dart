@@ -12,6 +12,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:xinji/app/theme/app_palette.dart';
 import 'package:xinji/app/theme/app_tokens.dart';
+import 'package:xinji/core/notifications/punch_reminders.dart';
+import 'package:xinji/core/notifications/reminder_schedule.dart';
 import 'package:xinji/core/utils/day_key.dart';
 import 'package:xinji/core/widgets/page_header.dart';
 import 'package:xinji/core/widgets/pressable.dart';
@@ -109,7 +111,7 @@ class SettingsPage extends StatelessWidget {
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              '简洁的工资记录工具 · v1.39.4',
+                              '简洁的工资记录工具 · v1.39.7',
                               style: TextStyle(
                                 fontFamily: 'Figtree',
                                 fontSize: 12.5,
@@ -455,13 +457,180 @@ String _notificationsSummary(SettingsController s) {
 }
 
 /// 「通知」页：打卡提醒管理——每份工作独立的开关 + 自定义提醒时间列表
-/// （与上下班时间无关，可添加多个时间点到点弹应用通知）。
-class _NotificationsPage extends StatelessWidget {
+/// （与上下班时间无关，可添加多个时间点到点弹应用通知），
+/// 以及通知权限 / 精确闹钟 / 后台运行状态。
+class _NotificationsPage extends StatefulWidget {
   const _NotificationsPage();
 
-  String _timeLabel(int minute) =>
-      '${(minute ~/ 60).toString().padLeft(2, '0')}:'
-      '${(minute % 60).toString().padLeft(2, '0')}';
+  @override
+  State<_NotificationsPage> createState() => _NotificationsPageState();
+}
+
+class _NotificationsPageState extends State<_NotificationsPage>
+    with WidgetsBindingObserver {
+  /// 应用级通知权限（null = 查询中）。
+  bool? _enabled;
+
+  /// 精确闹钟权限（null = 查询中）。
+  bool? _exact;
+
+  /// 已排定的系统提醒数量（null = 查询中）。
+  int? _pending;
+
+  /// 通知渠道状态（null = 查询中）。
+  ReminderChannelStatus? _channel;
+
+  /// 是否已加入电池优化白名单（null = 查询中）。
+  bool? _batteryExempt;
+
+  bool _requesting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshStatus();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 从系统设置返回后刷新权限/渠道状态。
+    if (state == AppLifecycleState.resumed) _refreshStatus();
+  }
+
+  Future<void> _refreshStatus() async {
+    final enabled = await PunchReminders.notificationsEnabled();
+    final exact = await PunchReminders.canScheduleExact();
+    final pending = await PunchReminders.pendingReminderCount();
+    final channel = await PunchReminders.channelStatus();
+    final battery = await PunchReminders.isIgnoringBatteryOptimizations();
+    if (!mounted) return;
+    setState(() {
+      _enabled = enabled;
+      _exact = exact;
+      _pending = pending;
+      _channel = channel;
+      _batteryExempt = battery;
+    });
+  }
+
+  Future<void> _requestPermission() async {
+    if (_requesting) return;
+    setState(() => _requesting = true);
+    final granted = await PunchReminders.requestPermission();
+    if (!mounted) return;
+    setState(() => _requesting = false);
+    await _refreshStatus();
+    if (!mounted) return;
+    if (granted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('未获得通知权限，可在「系统设置」中手动开启。')));
+  }
+
+  Future<void> _requestExact() async {
+    await PunchReminders.requestExactAlarmsPermission();
+    if (!mounted) return;
+    await _refreshStatus();
+    if (!mounted) return;
+    // 刚授予精确闹钟：按新的调度模式重排（由「可能延迟」改为「准点」）。
+    PunchReminders.reschedule(context.read<SettingsController>(), force: true);
+  }
+
+  Future<void> _requestBatteryExemption() async {
+    await PunchReminders.requestIgnoreBatteryOptimizations();
+    if (!mounted) return;
+    await _refreshStatus();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('如系统询问「允许后台运行」，请选择允许。')),
+    );
+  }
+
+  Future<void> _toggleJobReminders(Job job, bool value) async {
+    // 用户主动开启时才申请通知权限（避免应用启动时无故弹窗）。
+    if (value) {
+      await PunchReminders.ensurePermission();
+      if (!mounted) return;
+    }
+    final settings = context.read<SettingsController>();
+    await settings.updateJob(
+      (settings.jobById(job.id) ?? job).copyWith(punchReminders: value),
+    );
+    if (!mounted) return;
+    await _refreshStatus();
+    if (!mounted || !value) return;
+    await _offerExactPermission();
+  }
+
+  /// 开启提醒后，若未授权精确闹钟则提示一次（否则提醒可能明显延迟）。
+  Future<void> _offerExactPermission() async {
+    if (_exact != false) return;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('允许精确提醒？'),
+        content: const Text(
+          '未允许「闹钟和提醒」权限时，系统可能把提醒延后几分钟甚至更久。'
+          '建议在系统设置中允许，确保到点准时提醒。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('稍后'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('去允许'),
+          ),
+        ],
+      ),
+    );
+    if (go != true) return;
+    if (!mounted) return;
+    await PunchReminders.requestExactAlarmsPermission();
+    if (!mounted) return;
+    await _refreshStatus();
+    if (!mounted) return;
+    PunchReminders.reschedule(context.read<SettingsController>(), force: true);
+  }
+
+  Future<void> _addReminderTime(Job job) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (picked == null) return;
+    if (!mounted) return;
+    final settings = context.read<SettingsController>();
+    final current = settings.jobById(job.id) ?? job;
+    final minute = picked.hour * 60 + picked.minute;
+    if (current.reminderMinutes.contains(minute)) return;
+    await settings.updateJob(
+      current.copyWith(
+        reminderMinutes: normalizedReminderMinutes([
+          ...current.reminderMinutes,
+          minute,
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _removeReminderTime(Job job, int minute) async {
+    final settings = context.read<SettingsController>();
+    final current = settings.jobById(job.id) ?? job;
+    await settings.updateJob(
+      current.copyWith(
+        reminderMinutes: [...current.reminderMinutes.where((m) => m != minute)],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -475,125 +644,418 @@ class _NotificationsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
+          _buildStatusCard(context, settings),
+          const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 10),
             child: Text(
-              '到点弹出应用通知提醒打卡，与上下班时间无关，可设多个提醒时间（应用需保持运行）。',
+              '到点弹出系统通知提醒打卡，与上下班时间无关，可设多个提醒时间。'
+              '提醒由系统闹钟排定，应用关闭后仍会触发；若被系统拦截，'
+              '应用运行期间会补发 15 分钟内错过的提醒。'
+              '若只有声音、没有悬浮横幅，请在系统通知设置中允许「横幅/悬浮通知」；'
+              '部分系统（MIUI、ColorOS 等）还需允许自启动/后台运行。',
               style: TextStyle(
                 fontFamily: 'Figtree',
                 fontSize: 11.5,
                 fontWeight: FontWeight.w600,
+                height: 1.5,
                 color: context.tokens.muted,
               ),
             ),
           ),
           for (final (i, job) in settings.jobs.indexed) ...[
             if (i > 0) const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: job.color,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            job.name,
-                            style: TextStyle(
-                              fontFamily: 'Figtree',
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: context.colors.onSurface,
-                            ),
-                          ),
-                        ),
-                        Switch(
-                          value: job.punchReminders,
-                          onChanged: (v) => settings.updateJob(
-                            job.copyWith(punchReminders: v),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (job.punchReminders) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final minute in job.reminderMinutes)
-                            InputChip(
-                              avatar: Icon(
-                                LucideIcons.clock,
-                                size: 14,
-                                color: context.colors.primary,
-                              ),
-                              label: Text(_timeLabel(minute)),
-                              onDeleted: () => settings.updateJob(
-                                job.copyWith(
-                                  reminderMinutes: [
-                                    ...job.reminderMinutes.where(
-                                      (m) => m != minute,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ActionChip(
-                            avatar: Icon(
-                              LucideIcons.plus,
-                              size: 14,
-                              color: context.colors.primary,
-                            ),
-                            label: const Text('添加时间'),
-                            onPressed: () async {
-                              final picked = await showTimePicker(
-                                context: context,
-                                initialTime: TimeOfDay.now(),
-                              );
-                              if (picked == null) return;
-                              final minute =
-                                  picked.hour * 60 + picked.minute;
-                              if (job.reminderMinutes.contains(minute)) return;
-                              final next = [...job.reminderMinutes, minute]
-                                ..sort();
-                              await settings.updateJob(
-                                job.copyWith(reminderMinutes: next),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                      if (job.reminderMinutes.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            '尚未设置提醒时间，点击「添加时间」创建。',
-                            style: TextStyle(
-                              fontFamily: 'Figtree',
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: context.tokens.muted,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
+            _buildJobCard(context, job),
           ],
         ],
+      ),
+    );
+  }
+
+  /// 通知权限 / 精确闹钟 / 系统排定 / 通知渠道 / 后台运行。
+  Widget _buildStatusCard(BuildContext context, SettingsController settings) {
+    final muted = context.tokens.muted;
+    final enabled = _enabled;
+    final exact = _exact;
+    final pending = _pending;
+    final channel = _channel;
+    final batteryExempt = _batteryExempt;
+    final hasReminders = buildReminderSlots(settings.jobs).isNotEmpty;
+    final next = nextReminderDateTime(settings.jobs, DateTime.now());
+    final statusColor = enabled == null
+        ? muted
+        : enabled
+        ? context.tokens.success
+        : context.tokens.warning;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    enabled == true
+                        ? LucideIcons.bellRing
+                        : LucideIcons.bellOff,
+                    size: 17,
+                    color: statusColor,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '通知权限',
+                        style: TextStyle(
+                          fontFamily: 'Figtree',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: context.colors.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        enabled == null
+                            ? '正在检查…'
+                            : enabled
+                            ? '已开启，提醒可正常送达'
+                            : '未开启，到点提醒不会显示',
+                        style: TextStyle(
+                          fontFamily: 'Figtree',
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _MiniStatusPill(
+                  text: enabled == null
+                      ? '检查中'
+                      : enabled
+                      ? '已开启'
+                      : '未开启',
+                  color: statusColor,
+                ),
+              ],
+            ),
+            if (enabled == false) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 40,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: _requesting ? null : _requestPermission,
+                        child: Text(
+                          _requesting ? '请求中…' : '开启通知权限',
+                          style: const TextStyle(
+                            fontFamily: 'Figtree',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SizedBox(
+                      height: 40,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: PunchReminders.openNotificationSettings,
+                        child: const Text(
+                          '系统设置',
+                          style: TextStyle(
+                            fontFamily: 'Figtree',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 14),
+            Divider(
+              height: 1,
+              color: context.colors.outlineVariant.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 10),
+            _buildStatusRow(
+              context,
+              icon: LucideIcons.alarmClock,
+              label: '精确提醒',
+              detail: exact == null
+                  ? '正在检查…'
+                  : exact
+                  ? '已允许，提醒准点弹出'
+                  : '未允许，系统可能延迟几分钟',
+              ok: exact,
+              action: exact == false
+                  ? TextButton(
+                      onPressed: _requestExact,
+                      child: const Text('去允许'),
+                    )
+                  : null,
+            ),
+            _buildStatusRow(
+              context,
+              icon: LucideIcons.calendarClock,
+              label: '系统排定',
+              detail: _pendingDetail(next, hasReminders),
+              ok: pending == null
+                  ? null
+                  : pending > 0
+                  ? true
+                  : (hasReminders ? false : null),
+            ),
+            _buildStatusRow(
+              context,
+              icon: LucideIcons.bellRing,
+              label: '通知渠道',
+              detail: channel?.label ?? '正在检查…',
+              ok: channel?.headsUp,
+              action: channel != null && channel.exists && !channel.headsUp
+                  ? TextButton(
+                      onPressed: PunchReminders.openNotificationSettings,
+                      child: const Text('去设置'),
+                    )
+                  : null,
+            ),
+            _buildStatusRow(
+              context,
+              icon: LucideIcons.smartphone,
+              label: '后台运行',
+              detail: batteryExempt == null
+                  ? '正在检查…'
+                  : batteryExempt
+                  ? '已加入电池优化白名单'
+                  : '未加入白名单，部分系统会冻结后台提醒',
+              ok: batteryExempt,
+              action: batteryExempt == false
+                  ? TextButton(
+                      onPressed: _requestBatteryExemption,
+                      child: const Text('去设置'),
+                    )
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 「系统排定」行的说明文字。
+  String _pendingDetail(DateTime? next, bool hasReminders) {
+    final pending = _pending;
+    if (pending == null) return '正在检查…';
+    if (pending == 0) {
+      return hasReminders ? '尚未排定，请检查权限后重试' : '暂无开启的提醒';
+    }
+    return '$pending 条待触发 · 下次 ${_nextLabel(next)}';
+  }
+
+  /// 最近一次提醒的时间标签（今天/明天 HH:mm）。
+  String _nextLabel(DateTime? next) {
+    if (next == null) return '—';
+    final now = DateTime.now();
+    final sameDay =
+        next.year == now.year && next.month == now.month && next.day == now.day;
+    final time =
+        '${next.hour.toString().padLeft(2, '0')}:'
+        '${next.minute.toString().padLeft(2, '0')}';
+    return sameDay ? '今天 $time' : '明天 $time';
+  }
+
+  /// 状态卡内的一行：图标 + 标题/说明 + 右侧操作。
+  Widget _buildStatusRow(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String detail,
+    required bool? ok,
+    Widget? action,
+  }) {
+    final muted = context.tokens.muted;
+    final tint = ok == null
+        ? muted
+        : ok
+        ? context.tokens.success
+        : context.tokens.warning;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: tint),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontFamily: 'Figtree',
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: context.colors.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  detail,
+                  style: TextStyle(
+                    fontFamily: 'Figtree',
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ?action,
+        ],
+      ),
+    );
+  }
+
+  /// 单份工作的提醒开关与时间点。
+  Widget _buildJobCard(BuildContext context, Job job) {
+    final muted = context.tokens.muted;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: job.color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    job.name,
+                    style: TextStyle(
+                      fontFamily: 'Figtree',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: context.colors.onSurface,
+                    ),
+                  ),
+                ),
+                Switch(
+                  value: job.punchReminders,
+                  onChanged: (v) => _toggleJobReminders(job, v),
+                ),
+              ],
+            ),
+            if (job.punchReminders) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final minute in normalizedReminderMinutes(
+                    job.reminderMinutes,
+                  ))
+                    InputChip(
+                      avatar: Icon(
+                        LucideIcons.clock,
+                        size: 14,
+                        color: context.colors.primary,
+                      ),
+                      label: Text(formatReminderMinute(minute)),
+                      onDeleted: () => _removeReminderTime(job, minute),
+                    ),
+                  ActionChip(
+                    avatar: Icon(
+                      LucideIcons.plus,
+                      size: 14,
+                      color: context.colors.primary,
+                    ),
+                    label: const Text('添加时间'),
+                    onPressed: () => _addReminderTime(job),
+                  ),
+                ],
+              ),
+              if (job.reminderMinutes.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    '尚未设置提醒时间，点击「添加时间」创建。',
+                    style: TextStyle(
+                      fontFamily: 'Figtree',
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: muted,
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 状态卡右上角的小胶囊标签。
+class _MiniStatusPill extends StatelessWidget {
+  const _MiniStatusPill({required this.text, required this.color});
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontFamily: 'Figtree',
+          fontSize: 10.5,
+          fontWeight: FontWeight.w800,
+          color: color,
+        ),
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:xinji/app/classic_nav_bar.dart';
+import 'package:xinji/core/notifications/punch_reminders.dart';
 import 'package:xinji/features/records/pages/today_page.dart';
 import 'package:xinji/features/settings/pages/settings_page.dart';
 import 'package:xinji/features/settings/state/settings_controller.dart';
@@ -34,12 +35,24 @@ class _HomeShellState extends State<HomeShell>
       duration: const Duration(milliseconds: 300),
       value: 1,
     );
+    // 点击打卡提醒 → 回到「今日」页（并收起二级页面）。
+    PunchReminders.onReminderTapped = _openToday;
   }
 
   @override
   void dispose() {
+    if (PunchReminders.onReminderTapped == _openToday) {
+      PunchReminders.onReminderTapped = null;
+    }
     _swap.dispose();
     super.dispose();
+  }
+
+  /// 从通知进入应用：回到根路由并切到「今日」页。
+  void _openToday() {
+    if (!mounted) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    _select(_Tab.today);
   }
 
   void _select(_Tab tab) {

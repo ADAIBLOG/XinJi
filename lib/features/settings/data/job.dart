@@ -455,15 +455,16 @@ class Job {
       // 旧数据迁移：无自定义时间但开关开启 → 沿用上下班时间作为提醒点
       reminderMinutes: () {
         final raw = json['reminderMinutes'] as List?;
-        if (raw != null) {
-          return raw
-              .map((e) => e as int)
-              .where((m) => m >= 0 && m < 1440)
-              .toList();
-        }
-        return (json['punchReminders'] as bool? ?? false)
-            ? [json['workStart'] as int? ?? 540, json['workEnd'] as int? ?? 1080]
-            : <int>[];
+        final values = raw != null
+            ? raw.whereType<int>()
+            : (json['punchReminders'] as bool? ?? false)
+            ? [
+                json['workStart'] as int? ?? 540,
+                json['workEnd'] as int? ?? 1080,
+              ]
+            : const <int>[];
+        // 排序去重并过滤非法值（旧数据/异常导入可能带重复或越界分钟）
+        return values.where((m) => m >= 0 && m < 1440).toSet().toList()..sort();
       }(),
       taxEnabled: taxEnabledValue,
       taxThreshold: (json['taxThreshold'] as num?)?.toDouble() ?? 5000,

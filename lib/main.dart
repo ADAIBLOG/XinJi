@@ -21,7 +21,8 @@ void main() {
 
   syncJobSplits();
   settings.addListener(syncJobSplits);
-  // 打卡提醒：设置加载完成 / 开关或工作时间变化后重排每日提醒。
+  // 打卡提醒：设置加载完成 / 开关或提醒时间变化后重排每日提醒。
+  // 内部会比对提醒配置签名并去抖，切换主题等无关设置不会触发平台调用。
   void syncReminders() {
     if (settings.loaded) PunchReminders.reschedule(settings);
   }
