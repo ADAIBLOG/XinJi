@@ -2,7 +2,7 @@ name: xinji
 description: "薪迹：一款简洁的工资记录应用。"
 publish_to: 'none'
 
-version: 1.39.8+4071
+version: 1.39.9+4072
 
 environment:
   sdk: ^3.12.2
@@ -34,8 +34,10 @@ flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/icon/app_icon.png"
-  adaptive_icon_background: "#6366F1"
+  adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  # 前景图已按安全区留白（63%），不再额外内缩，避免图标过小
+  adaptive_icon_foreground_inset: 0
   min_sdk_android: 23
 
 flutter:

@@ -111,7 +111,7 @@ class SettingsPage extends StatelessWidget {
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              '简洁的工资记录工具 · v1.39.8',
+                              '简洁的工资记录工具 · v1.39.9',
                               style: TextStyle(
                                 fontFamily: 'Figtree',
                                 fontSize: 12.5,
