@@ -863,4 +863,15 @@ void main() {
     expect(s3.jobs.first.punchReminders, false);
     expect(s3.overtimeColorIndex, -1);
   });
+
+  test('工作：班次长度支持跨天夜班（用于补记工作日的工时显示）', () {
+    final dayShift = Job(id: 'd', name: '白班', workStart: 540, workEnd: 1260);
+    expect(dayShift.shiftMinutes, 720); // 09:00–21:00 → 12h
+
+    final nightShift = Job(id: 'n', name: '夜班', workStart: 1320, workEnd: 600);
+    expect(nightShift.shiftMinutes, 720); // 22:00–次日 10:00 → 12h
+
+    final invalid = Job(id: 'x', name: '异常', workStart: 540, workEnd: 540);
+    expect(invalid.shiftMinutes, 540); // 相同时间 → 9h 兜底
+  });
 }

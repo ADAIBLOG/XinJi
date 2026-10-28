@@ -469,6 +469,31 @@ class RecordsController extends ChangeNotifier {
     await _persistMarks();
   }
 
+  /// 回填忘打卡补记工作日的工时：日薪/月薪模式没有实际打卡工时，
+  /// 按该工作的标准工时（如 09:00–21:00 → 12h）补齐，
+  /// 让日历/当日明细显示的工时与正常打卡一致；计薪仍按整天计算。
+  ///
+  /// 仅处理「工时为空」的工作日标记；时薪模式由用户输入工时，不在此映射中。
+  /// 幂等：没有需要回填的标记时不写盘。
+  Future<void> backfillWorkMarkHours(
+    Map<String, int> standardMinutesByJob,
+  ) async {
+    var changed = false;
+    for (final byJob in _marks.values) {
+      for (final entry in byJob.entries) {
+        final mark = entry.value;
+        if (!mark.isWork || mark.hours > 0) continue;
+        final minutes = standardMinutesByJob[entry.key];
+        if (minutes == null || minutes <= 0) continue;
+        byJob[entry.key] = DayMark.work(minutes / 60);
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    notifyListeners();
+    await _persistMarks();
+  }
+
   /// 某天某份工作的加班工时（小时）；[jobId] 为空返回全部工作合计。
   double overtimeOf(String dateKey, {String? jobId}) {
     final byJob = _overtime[dateKey];

@@ -28,6 +28,19 @@ void main() {
   }
 
   settings.addListener(syncReminders);
+  // 忘打卡补记的工作日：日薪/月薪没有实际打卡工时，按标准工时回填，
+  // 让日历/当日明细显示的工时与正常打卡一致（如 09:00–21:00 → 12h）。
+  void syncWorkMarkHours() {
+    if (!settings.loaded || !records.loaded) return;
+    records.backfillWorkMarkHours({
+      for (final job in settings.jobs)
+        if (job.calcMode != CalcMode.hourly) job.id: job.shiftMinutes,
+    });
+  }
+
+  syncWorkMarkHours();
+  settings.addListener(syncWorkMarkHours);
+  records.addListener(syncWorkMarkHours);
   runApp(
     MultiProvider(
       providers: [

@@ -237,6 +237,15 @@ class Job {
     return minutes > 0 ? minutes : 540;
   }
 
+  /// 配置的班次长度（分钟），跨天夜班按次日下班计算
+  /// （如 22:00–10:00 → 12 小时）；上下班时间相同或无效时按 9 小时。
+  /// 用于忘打卡补记工作日时回填显示工时，不改变计薪口径。
+  int get shiftMinutes {
+    if (workEnd == workStart) return 540;
+    final minutes = (workEnd - workStart) % 1440;
+    return minutes > 0 ? minutes : 540;
+  }
+
   /// 某天是否为排班休息日。
   /// - 无固定：false
   /// - 固定休息：选中星期

@@ -2150,7 +2150,10 @@ class _CalendarChartState extends State<_CalendarChart>
           if (hours == null || hours <= 0) return;
           await records.setMark(key, DayMark.work(hours), jobId: selJobId);
         } else {
-          await records.setMark(key, const DayMark.work(0), jobId: selJobId);
+          // 日薪/月薪：补记工作日按标准工时记录（如 12h），
+          // 与正常打卡显示的工时一致；计薪仍按整天。
+          final hours = (job?.shiftMinutes ?? 540) / 60;
+          await records.setMark(key, DayMark.work(hours), jobId: selJobId);
         }
       case 'overtime':
         final hours = await _showHoursDialog(title: '记加班', hint: '加班小时数');

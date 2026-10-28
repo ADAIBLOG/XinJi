@@ -331,6 +331,45 @@ void main() {
     expect(second.hoursAll(), 0.0);
   });
 
+  test('日期标记：日薪/月薪补记工作日按标准工时回填（日历显示 12h 而非 1天）', () async {
+    SharedPreferences.setMockInitialValues({});
+    final controller = RecordsController();
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    // 日薪工作：忘打卡补记（旧数据不带工时）
+    await controller.setMark(
+      '2026-10-10',
+      const DayMark.work(0),
+      jobId: 'daily',
+    );
+    // 时薪工作：工时由用户输入，不参与回填
+    await controller.setMark(
+      '2026-10-11',
+      const DayMark.work(0),
+      jobId: 'hourly',
+    );
+    // 已有工时的标记保持不变
+    await controller.setMark('2026-10-12', const DayMark.work(5), jobId: 'daily');
+
+    await controller.backfillWorkMarkHours({'daily': 720});
+
+    expect(controller.baseHoursOf('2026-10-10', jobId: 'daily'), 12.0);
+    expect(controller.dayHoursOf('2026-10-10', jobId: 'daily'), 12.0);
+    // 计薪口径仍是整天，不会因为 12h 变成 1.5 天
+    expect(controller.dayUnitsOf('2026-10-10', 540, jobId: 'daily'), 1.0);
+    expect(controller.baseHoursOf('2026-10-11', jobId: 'hourly'), 0.0);
+    expect(controller.baseHoursOf('2026-10-12', jobId: 'daily'), 5.0);
+
+    // 幂等 & 持久化
+    await controller.backfillWorkMarkHours({'daily': 720});
+    final reloaded = RecordsController();
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+    expect(reloaded.markOf('2026-10-10', jobId: 'daily')?.hours, 12.0);
+    expect(reloaded.baseHoursOf('2026-10-11', jobId: 'hourly'), 0.0);
+  });
+
   test('加班：独立于打卡/标记，按加班时薪计酬，不重复计薪', () async {
     SharedPreferences.setMockInitialValues({});
     final controller = RecordsController();
