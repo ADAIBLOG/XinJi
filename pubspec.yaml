@@ -2,7 +2,7 @@ name: xinji
 description: "薪迹：一款简洁的工资记录应用。"
 publish_to: 'none'
 
-version: 1.39.9+4072
+version: 1.40.0+4073
 
 environment:
   sdk: ^3.12.2

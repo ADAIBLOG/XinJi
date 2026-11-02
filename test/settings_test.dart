@@ -191,11 +191,13 @@ void main() {
     expect(s.statsYearAnchorMonth, 1);
     expect(s.statsYearAnchorDay, 1);
     expect(s.statsTotalStart, isNull);
+    expect(s.statsTotalMode, StatsTotalMode.total);
 
     await s.setStatsWeekStart(3);
     await s.setStatsMonthAnchorDay(15);
     await s.setStatsYearAnchor(3, 1);
     await s.setStatsTotalStart(DateTime(2026, 10, 1));
+    await s.setStatsTotalMode(StatsTotalMode.month);
 
     final s2 = SettingsController();
     await Future.delayed(Duration.zero);
@@ -204,6 +206,7 @@ void main() {
     expect(s2.statsYearAnchorMonth, 3);
     expect(s2.statsYearAnchorDay, 1);
     expect(s2.statsTotalStart, DateTime(2026, 10, 1));
+    expect(s2.statsTotalMode, StatsTotalMode.month);
 
     await s2.setStatsTotalStart(null);
     final s3 = SettingsController();

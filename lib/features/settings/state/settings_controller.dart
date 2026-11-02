@@ -11,6 +11,9 @@ export 'package:xinji/features/settings/data/job.dart';
 /// 统计页可配置组件。
 enum StatsSection { total, periods, daily, calendar, monthly }
 
+/// 顶部收入卡片的统计周期：累计 / 本周 / 本月 / 今年。
+enum StatsTotalMode { total, week, month, year }
+
 /// 全局设置 + 工作列表管理。
 /// 薪资、上下班时间、休息日排班、跨天分割、打卡模式与个税按工作（Job）独立配置；
 /// 货币符号、外观等为全局设置。
@@ -36,6 +39,7 @@ class SettingsController extends ChangeNotifier {
   static const _keyStatsYearAnchorMonth = 'xinji.statsYearAnchorMonth';
   static const _keyStatsYearAnchorDay = 'xinji.statsYearAnchorDay';
   static const _keyStatsTotalStart = 'xinji.statsTotalStart';
+  static const _keyStatsTotalMode = 'xinji.statsTotalMode';
   static const _keyJobs = 'xinji.jobs';
   static const _keyActiveJob = 'xinji.activeJobId';
 
@@ -76,6 +80,9 @@ class SettingsController extends ChangeNotifier {
   int _statsYearAnchorMonth = 1;
   int _statsYearAnchorDay = 1;
   DateTime? _statsTotalStart;
+
+  /// 顶部收入卡片显示周期。
+  StatsTotalMode _statsTotalMode = StatsTotalMode.total;
 
   /// 工作列表与当前选中工作（今日页打卡归属）。
   List<Job> _jobs = [];
@@ -159,6 +166,9 @@ class SettingsController extends ChangeNotifier {
   /// 统计累计起始日期（null = 全部数据）。
   DateTime? get statsTotalStart => _statsTotalStart;
 
+  /// 顶部收入卡片显示周期。
+  StatsTotalMode get statsTotalMode => _statsTotalMode;
+
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     _currency = prefs.getString(_keyCurrency) ?? '¥';
@@ -234,6 +244,13 @@ class SettingsController extends ChangeNotifier {
     _statsTotalStart = DateTime.tryParse(
       prefs.getString(_keyStatsTotalStart) ?? '',
     );
+    final totalMode = prefs.getInt(_keyStatsTotalMode);
+    _statsTotalMode =
+        totalMode != null &&
+            totalMode >= 0 &&
+            totalMode < StatsTotalMode.values.length
+        ? StatsTotalMode.values[totalMode]
+        : StatsTotalMode.total;
 
     // 工作列表：首次启动（无 xinji.jobs）时把旧版全局薪资设置迁移为「默认工作」。
     final jobsRaw = prefs.getString(_keyJobs);
@@ -401,6 +418,7 @@ class SettingsController extends ChangeNotifier {
           ? ''
           : dayKeyOf(_statsTotalStart!),
     );
+    await prefs.setInt(_keyStatsTotalMode, _statsTotalMode.index);
     await _saveJobs(prefs);
   }
 
@@ -639,6 +657,13 @@ class SettingsController extends ChangeNotifier {
     _statsTotalStart = date == null
         ? null
         : DateTime(date.year, date.month, date.day);
+    notifyListeners();
+    await _save();
+  }
+
+  /// 设置顶部收入卡片的显示周期。
+  Future<void> setStatsTotalMode(StatsTotalMode mode) async {
+    _statsTotalMode = mode;
     notifyListeners();
     await _save();
   }

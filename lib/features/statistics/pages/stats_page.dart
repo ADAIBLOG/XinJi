@@ -63,6 +63,25 @@ DateTime _earliestStatMonth(RecordsController records, {String? jobId}) {
   return (r.net, r.tax);
 }
 
+/// 以 [start] 为起点、截至现在的周期税后合计：(税后合计, 扣税合计)。
+(double net, double tax) _netOfRange(
+  SettingsController settings,
+  RecordsController records,
+  DateTime start, {
+  String? jobId,
+}) {
+  final now = DateTime.now();
+  final r = netEarningsOfAnchorPeriod(
+    settings,
+    records,
+    DateTime(start.year, start.month),
+    DateTime(now.year, now.month),
+    anchorDate: start,
+    jobId: jobId,
+  );
+  return (r.net, r.tax);
+}
+
 /// 锚点周期逐月税后合计（首月自 [anchorDate] 起算；null 时整月）。
 /// 返回 (税后合计, 扣税合计)。各工作按自己的个税设置独立计税（不合并）。
 ({double net, double tax}) netEarningsOfAnchorPeriod(
@@ -358,108 +377,322 @@ class _StatsPageState extends State<StatsPage> with WidgetsBindingObserver {
     }
   }
 
-  /// 配置累计起始日期（null = 全部数据）。
-  Future<void> _configTotalStart(
+  /// 配置顶部收入卡片的显示周期（累计 / 本周 / 本月 / 今年）及各周期锚点。
+  Future<void> _configTotalPeriod(
     BuildContext context,
     SettingsController settings,
   ) async {
     final now = DateTime.now();
+    var mode = settings.statsTotalMode;
+    // 返回码：1 = 自定义累计起始日，2 = 自定义每月循环日，3 = 自定义年度起始日
     final action = await showModalBottomSheet<int>(
       context: context,
       backgroundColor: context.colors.surface,
+      isScrollControlled: true,
       constraints: const BoxConstraints(maxWidth: double.infinity),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (sheetContext) => SizedBox(
-        width: double.infinity,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '累计统计范围',
-                  style: TextStyle(
-                    fontFamily: 'Figtree',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: sheetContext.colors.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '「累计收入」从所选日期起累计，不影响本周/本月/今年',
-                  style: TextStyle(
-                    fontFamily: 'Figtree',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: sheetContext.tokens.muted,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _AnchorChip(
-                      label: '全部数据',
-                      selected: settings.statsTotalStart == null,
-                      onTap: () => Navigator.pop(sheetContext, 0),
-                    ),
-                    _AnchorChip(
-                      label: '本月起',
-                      selected: _isSameDay(
-                        settings.statsTotalStart,
-                        DateTime(now.year, now.month),
-                      ),
-                      onTap: () => Navigator.pop(sheetContext, 2),
-                    ),
-                    _AnchorChip(
-                      label: '今年起',
-                      selected: _isSameDay(
-                        settings.statsTotalStart,
-                        DateTime(now.year),
-                      ),
-                      onTap: () => Navigator.pop(sheetContext, 3),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                TextButton(
-                  onPressed: () => Navigator.pop(sheetContext, 1),
-                  child: const Text('自定义起始日…'),
-                ),
-              ],
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          final scheme = sheetContext.colors;
+          final muted = sheetContext.tokens.muted;
+          Widget sectionTitle(String text) => Text(
+            text,
+            style: TextStyle(
+              fontFamily: 'Figtree',
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: sheetContext.colors.onSurface,
             ),
-          ),
-        ),
+          );
+          Widget hint(String text) => Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 10),
+            child: Text(
+              text,
+              style: TextStyle(
+                fontFamily: 'Figtree',
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: muted,
+              ),
+            ),
+          );
+          return SizedBox(
+            width: double.infinity,
+            child: SafeArea(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '收入卡片统计周期',
+                        style: TextStyle(
+                          fontFamily: 'Figtree',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: scheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '顶部收入卡片显示的时间范围，标题随周期变化',
+                        style: TextStyle(
+                          fontFamily: 'Figtree',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: muted,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          for (final m in StatsTotalMode.values)
+                            _AnchorChip(
+                              label: switch (m) {
+                                StatsTotalMode.total => '累计收入',
+                                StatsTotalMode.week => '本周',
+                                StatsTotalMode.month => '本月',
+                                StatsTotalMode.year => '今年',
+                              },
+                              selected: mode == m,
+                              onTap: () async {
+                                await settings.setStatsTotalMode(m);
+                                if (!sheetContext.mounted) return;
+                                setSheetState(() => mode = m);
+                              },
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      if (mode == StatsTotalMode.total) ...[
+                        sectionTitle('累计起始'),
+                        hint('从所选起始日开始累计'),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            _AnchorChip(
+                              label: '全部数据',
+                              selected: settings.statsTotalStart == null,
+                              onTap: () async {
+                                await settings.setStatsTotalStart(null);
+                                if (sheetContext.mounted) setSheetState(() {});
+                              },
+                            ),
+                            _AnchorChip(
+                              label: '本月起',
+                              selected: _isSameDay(
+                                settings.statsTotalStart,
+                                DateTime(now.year, now.month),
+                              ),
+                              onTap: () async {
+                                await settings.setStatsTotalStart(
+                                  DateTime(now.year, now.month),
+                                );
+                                if (sheetContext.mounted) setSheetState(() {});
+                              },
+                            ),
+                            _AnchorChip(
+                              label: '今年起',
+                              selected: _isSameDay(
+                                settings.statsTotalStart,
+                                DateTime(now.year),
+                              ),
+                              onTap: () async {
+                                await settings.setStatsTotalStart(
+                                  DateTime(now.year),
+                                );
+                                if (sheetContext.mounted) setSheetState(() {});
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        TextButton(
+                          onPressed: () => Navigator.pop(sheetContext, 1),
+                          child: const Text('自定义起始日…'),
+                        ),
+                      ] else if (mode == StatsTotalMode.week) ...[
+                        sectionTitle('每周循环起始日'),
+                        hint('「本周」将从所选星期起统计'),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            for (var i = 0; i < 7; i++)
+                              _AnchorChip(
+                                label: '周${_weekdayName(i + 1)}',
+                                selected: settings.statsWeekStart == i + 1,
+                                onTap: () async {
+                                  await settings.setStatsWeekStart(i + 1);
+                                  if (sheetContext.mounted) {
+                                    setSheetState(() {});
+                                  }
+                                },
+                              ),
+                          ],
+                        ),
+                      ] else if (mode == StatsTotalMode.month) ...[
+                        sectionTitle('每月循环起始日'),
+                        hint('如发薪日为 15 号，「本月」= 15 日 ~ 下月 14 日'),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            for (final d in const [1, 5, 10, 15, 20, 25])
+                              _AnchorChip(
+                                label: '$d 号',
+                                selected: settings.statsMonthAnchorDay == d,
+                                onTap: () async {
+                                  await settings.setStatsMonthAnchorDay(d);
+                                  if (sheetContext.mounted) {
+                                    setSheetState(() {});
+                                  }
+                                },
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        TextButton(
+                          onPressed: () => Navigator.pop(sheetContext, 2),
+                          child: const Text('自定义日期…'),
+                        ),
+                      ] else ...[
+                        sectionTitle('年度循环起始'),
+                        hint(
+                          '当前：每年${settings.statsYearAnchorMonth}月'
+                          '${settings.statsYearAnchorDay}日起',
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(sheetContext, 3),
+                          child: const Text('选择年度起始日期…'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
-    if (action == null) return;
-    if (action == 0) {
-      await settings.setStatsTotalStart(null);
-      return;
+    if (action == null || !mounted) return;
+    if (action == 1) {
+      final date = await showDatePicker(
+        context: this.context,
+        initialDate: settings.statsTotalStart ?? now,
+        firstDate: DateTime(2000),
+        lastDate: now,
+        helpText: '累计统计起始日期',
+      );
+      if (date != null) await settings.setStatsTotalStart(date);
+    } else if (action == 2) {
+      final date = await showDatePicker(
+        context: this.context,
+        initialDate: now,
+        firstDate: DateTime(2000),
+        lastDate: now,
+        helpText: '选择含起始日的日期',
+      );
+      if (date != null) await settings.setStatsMonthAnchorDay(date.day);
+    } else if (action == 3) {
+      final date = await showDatePicker(
+        context: this.context,
+        initialDate: now,
+        firstDate: DateTime(2000),
+        lastDate: now,
+        helpText: '选择年度起始日期（取月、日）',
+      );
+      if (date != null) {
+        await settings.setStatsYearAnchor(date.month, date.day);
+      }
     }
-    if (action == 2) {
-      await settings.setStatsTotalStart(DateTime(now.year, now.month));
-      return;
-    }
-    if (action == 3) {
-      await settings.setStatsTotalStart(DateTime(now.year));
-      return;
-    }
-    if (!mounted) return;
-    final date = await showDatePicker(
-      context: this.context,
-      initialDate: settings.statsTotalStart ?? DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now(),
-      helpText: '累计统计起始日期',
+  }
+
+  /// 顶部收入卡片：按设置的周期（累计 / 本周 / 本月 / 今年）汇总。
+  _TotalCard _buildTotalCard(
+    BuildContext context,
+    SettingsController settings,
+    RecordsController records, {
+    required DateTime now,
+    required DateTime weekStart,
+    required DateTime monthStart,
+    required DateTime yearStart,
+    String? jobId,
+  }) {
+    final mode = settings.statsTotalMode;
+    final totalStart = settings.statsTotalStart;
+    final start = switch (mode) {
+      StatsTotalMode.total => totalStart,
+      StatsTotalMode.week => weekStart,
+      StatsTotalMode.month => monthStart,
+      StatsTotalMode.year => yearStart,
+    };
+    final (net, tax) = switch (mode) {
+      StatsTotalMode.total => _netTotalOf(settings, records, jobId: jobId),
+      // 本周按税前口径统计（个税为月度口径，无法归入单周），与「本周」小卡一致
+      StatsTotalMode.week => (
+        earningsOf(settings, records, start: weekStart, end: now, jobId: jobId),
+        0.0,
+      ),
+      _ => _netOfRange(settings, records, start!, jobId: jobId),
+    };
+    final taxEnabled = mode == StatsTotalMode.week
+        ? false
+        : jobId == null
+        ? settings.jobs.any((j) => j.taxEnabled)
+        : (settings.jobById(jobId)?.taxEnabled ?? false);
+    final periodLabel = switch (mode) {
+      StatsTotalMode.total => '累计',
+      StatsTotalMode.week => '本周',
+      StatsTotalMode.month => '本月',
+      StatsTotalMode.year => '今年',
+    };
+    final anchorText = switch (mode) {
+      StatsTotalMode.total =>
+        totalStart == null
+            ? null
+            : '自 ${totalStart.year}年${totalStart.month}月'
+                  '${totalStart.day}日起统计',
+      StatsTotalMode.week =>
+        settings.statsWeekStart == 1
+            ? null
+            : '每周${_weekdayName(settings.statsWeekStart)}起',
+      StatsTotalMode.month =>
+        settings.statsMonthAnchorDay == 1
+            ? null
+            : '每月${settings.statsMonthAnchorDay}日起',
+      StatsTotalMode.year =>
+        settings.statsYearAnchorMonth == 1 && settings.statsYearAnchorDay == 1
+            ? null
+            : '每年${settings.statsYearAnchorMonth}月'
+                  '${settings.statsYearAnchorDay}日起',
+    };
+    return _TotalCard(
+      netTotal: (net, tax),
+      hours: start == null
+          ? records.hoursAll(jobId: jobId)
+          : records.hoursBetween(start, now, jobId: jobId),
+      days: daysOf(
+        settings,
+        records,
+        start: start,
+        end: start == null ? null : now,
+        jobId: jobId,
+      ),
+      currency: settings.currency,
+      taxEnabled: taxEnabled,
+      periodLabel: periodLabel,
+      anchorText: anchorText,
+      onConfigure: () => _configTotalPeriod(context, settings),
     );
-    if (date != null) await settings.setStatsTotalStart(date);
   }
 
   @override
@@ -528,6 +761,7 @@ class _StatsPageState extends State<StatsPage> with WidgetsBindingObserver {
   ) {
     final jobId = _jobFilter;
     final now = DateTime.now();
+    final weekStart = weekAnchorStartOf(now, settings.statsWeekStart);
     final monthStart = monthAnchorStartOf(now, settings.statsMonthAnchorDay);
     final yearStart = yearAnchorStartOf(
       now,
@@ -579,28 +813,15 @@ class _StatsPageState extends State<StatsPage> with WidgetsBindingObserver {
       for (final (i, section) in sections.indexed) ...[
         if (i > 0) const SizedBox(height: 16),
         switch (section) {
-          StatsSection.total => _TotalCard(
-            netTotal: _netTotalOf(settings, records, jobId: jobId),
-            hours: settings.statsTotalStart == null
-                ? records.hoursAll(jobId: jobId)
-                : records.hoursBetween(settings.statsTotalStart!, now, jobId: jobId),
-            days: daysOf(
-              settings,
-              records,
-              start: settings.statsTotalStart,
-              end: settings.statsTotalStart == null ? null : now,
-              jobId: jobId,
-            ),
-            currency: settings.currency,
-            taxEnabled: jobId == null
-                ? settings.jobs.any((j) => j.taxEnabled)
-                : (settings.jobById(jobId)?.taxEnabled ?? false),
-            anchorText: settings.statsTotalStart == null
-                ? null
-                : '自 ${settings.statsTotalStart!.year}年'
-                      '${settings.statsTotalStart!.month}月'
-                      '${settings.statsTotalStart!.day}日起统计',
-            onConfigure: () => _configTotalStart(context, settings),
+          StatsSection.total => _buildTotalCard(
+            context,
+            settings,
+            records,
+            now: now,
+            weekStart: weekStart,
+            monthStart: monthStart,
+            yearStart: yearStart,
+            jobId: jobId,
           ),
           StatsSection.periods => Row(
             children: [
@@ -610,7 +831,7 @@ class _StatsPageState extends State<StatsPage> with WidgetsBindingObserver {
                   value: earningsOf(
                     settings,
                     records,
-                    start: weekAnchorStartOf(now, settings.statsWeekStart),
+                    start: weekStart,
                     end: now,
                     jobId: jobId,
                   ),
@@ -689,7 +910,7 @@ class _StatsPageState extends State<StatsPage> with WidgetsBindingObserver {
 
 /// 统计组件显示名称。
 String _statsSectionLabel(StatsSection section) => switch (section) {
-  StatsSection.total => '累计收入',
+  StatsSection.total => '收入卡片',
   StatsSection.periods => '本周 · 本月 · 今年',
   StatsSection.daily => '本周每日收入',
   StatsSection.calendar => '月历',
@@ -807,6 +1028,7 @@ class _TotalCard extends StatelessWidget {
     required this.days,
     required this.currency,
     required this.taxEnabled,
+    required this.periodLabel,
     this.anchorText,
     this.onConfigure,
   });
@@ -818,7 +1040,10 @@ class _TotalCard extends StatelessWidget {
   final String currency;
   final bool taxEnabled;
 
-  /// 累计起始日期提示（null = 全部数据）。
+  /// 周期名称（累计 / 本周 / 本月 / 今年），用于标题与工时说明。
+  final String periodLabel;
+
+  /// 周期锚点提示（null = 默认周期）。
   final String? anchorText;
   final VoidCallback? onConfigure;
 
@@ -836,7 +1061,7 @@ class _TotalCard extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  taxEnabled ? '累计到手' : '累计收入',
+                  taxEnabled ? '$periodLabel到手' : '$periodLabel收入',
                   style: TextStyle(
                     fontFamily: 'Figtree',
                     fontSize: 13,
@@ -892,7 +1117,7 @@ class _TotalCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              '累计工时 ${formatHours(hours)} · 出勤 ${formatQuantity(days)} 天',
+              '$periodLabel工时 ${formatHours(hours)} · 出勤 ${formatQuantity(days)} 天',
               style: TextStyle(
                 fontFamily: 'Figtree',
                 fontSize: 12.5,
